@@ -1,14 +1,14 @@
 package models
 
 import (
-	"github.com/lib/pq"
+	"time"
 )
 
 type Url struct {
 	Id        int64
 	Title     string
-	CreatedAt pq.NullTime
-	UpdatedAt pq.NullTime
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 var table = "short_urls"

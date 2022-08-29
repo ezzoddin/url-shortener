@@ -1,16 +1,21 @@
 package controllers
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
+	"github.com/itchyny/base58-go"
 	_ "github.com/lib/pq" // postgres golang driver
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
+	"time"
 	"url-shortner/models"
 	"url-shortner/repository/database"
 )
@@ -27,12 +32,14 @@ func CreateUrl(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 	var url models.Url
-
 	err := json.NewDecoder(r.Body).Decode(&url)
 
 	if err != nil {
 		log.Fatalf("Unable to decode the request body.  %v", err)
 	}
+
+	url.CreatedAt = time.Now()
+	url.UpdatedAt = time.Now()
 
 	insertID := insertUrl(url)
 
@@ -218,7 +225,7 @@ func updateUrl(id int64, url models.Url) int64 {
 
 	defer db.Close()
 
-	sqlStatement := `UPDATE ` + models.GetTable() + ` SET title=$2,  WHERE id=$1`
+	sqlStatement := `UPDATE ` + models.GetTable() + ` SET title=$2 WHERE id=$1`
 
 	res, err := db.Exec(sqlStatement, id, url.Title)
 
@@ -280,4 +287,56 @@ func isUrlValid(input string) bool {
 	}
 
 	return true
+}
+
+func GenerateShortLink(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Context-Type", "application/x-www-form-urlencoded")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	var url models.Url
+	err := json.NewDecoder(r.Body).Decode(&url)
+
+	if err != nil {
+		log.Fatalf("Unable to decode the request body.  %v", err)
+	}
+
+	url.CreatedAt = time.Now()
+	url.UpdatedAt = time.Now()
+
+	insertID := insertUrl(url)
+
+	shortLink := ShortLink(url.Title, insertID)
+
+	res := response{
+		ID:      insertID,
+		Message: "short url" + shortLink,
+	}
+
+	json.NewEncoder(w).Encode(res)
+}
+
+func ShortLink(initialLink string, urlId int64) string {
+	id := strconv.FormatInt(urlId, 16)
+	urlHashBytes := sha256Of(initialLink + id)
+	generatedNumber := new(big.Int).SetBytes(urlHashBytes).Uint64()
+	finalString := base58Encoded([]byte(fmt.Sprintf("%d", generatedNumber)))
+	return finalString[:8]
+}
+
+func sha256Of(input string) []byte {
+	algorithm := sha256.New()
+	algorithm.Write([]byte(input))
+	return algorithm.Sum(nil)
+}
+
+func base58Encoded(bytes []byte) string {
+	encoding := base58.BitcoinEncoding
+	encoded, err := encoding.Encode(bytes)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+	return string(encoded)
 }
